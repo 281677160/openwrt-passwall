@@ -137,7 +137,19 @@ local auto_switch = api.uci_get_type("auto_switch", "enable", 0)
 			}
 		}
 	}
-	setTimeout("go()", 1000);
+	 
+	function addLoadEvent(func) {
+		var oldonload = window.onload;
+		if (typeof window.onload != 'function') {
+			window.onload = func;
+		} else {
+			window.onload = function () {
+				oldonload();
+				func();
+			}
+		}
+	}
+	addLoadEvent(go);
 
 	//]]>
 </script>

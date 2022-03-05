@@ -229,35 +229,6 @@ table td, .table .td {
 		);
 	}
 	
-	function urltest_node(cbi_id, dom) {
-		if (cbi_id != null) {
-			dom.disabled = true;
-			dom.value = "<%:Check...%>";
-			XHR.get('<%=api.url("urltest_node")%>', {
-					id: cbi_id
-				},
-				function(x, result) {
-					if(x && x.status == 200) {
-						if (result.use_time == null || result.use_time.trim() == "") {
-							dom.outerHTML = "<font style='color:red'><%:Timeout%></font>";
-						} else {
-							var color = "red";
-							var use_time = result.use_time;
-							if (use_time < 1000) {
-								color = "green";
-							} else if (use_time < 2000) {
-								color = "#fb9a05";
-							} else {
-								color = "red";
-							}
-							dom.outerHTML = "<font style='color:" + color + "'>" + result.use_time + " ms" + "</font>";
-						}
-					}
-				}
-			);
-		}
-	}
-	
 	function ping_node(cbi_id, dom) {
 		var full = get_address_full(cbi_id);
 		if (full != null) {
@@ -420,11 +391,11 @@ table td, .table .td {
 			//添加"勾选"框
 			new_div += '<input class="cbi-input-checkbox nodes_select" type="checkbox" cbid="' + id + '" />&nbsp;&nbsp;';
 			//添加"置顶"按钮
-			new_div += '<input class="btn cbi-button" type="button" value="<%:To Top%>" onclick="_cbi_row_top(\'' + id + '\')"/>&nbsp;&nbsp;';
+			new_div += '<input class="cbi-button" type="button" value="<%:To Top%>" onclick="_cbi_row_top(\'' + id + '\')"/>&nbsp;&nbsp;';
 			//添加"应用"按钮
-			new_div += '<input class="btn cbi-button cbi-button-apply" type="button" value="<%:Use%>" id="apply_' + id + '" onclick="open_set_node_div(\'' + id + '\')"/>&nbsp;&nbsp;';
+			new_div += '<input class="cbi-button cbi-button-apply" type="button" value="<%:Use%>" id="apply_' + id + '" onclick="open_set_node_div(\'' + id + '\')"/>&nbsp;&nbsp;';
 			//添加"复制"按钮
-			new_div += '<input class="btn cbi-button cbi-button-add" type="button" value="<%:Copy%>" onclick="copy_node(\'' + id + '\')"/>&nbsp;&nbsp;';
+			new_div += '<input class="cbi-button cbi-button-add" type="button" value="<%:Copy%>" onclick="copy_node(\'' + id + '\')"/>&nbsp;&nbsp;';
 			td.innerHTML = new_div + td.innerHTML;
 			
 			var obj = {};
@@ -469,9 +440,9 @@ table td, .table .td {
 	<div id="set_node_div">
 		<div class="cbi-value"><%:You choose node is:%><a style="color: red" id="set_node_name"></a></div>
 		<div class="cbi-value">
-			<input class="btn cbi-button cbi-button-edit" type="button" onclick="set_node('tcp')" value="TCP" />
-			<input class="btn cbi-button cbi-button-edit" type="button" onclick="set_node('udp')" value="UDP" />
-			<input class="btn cbi-button cbi-button-remove" type="button" onclick="close_set_node_div()" value="<%:Close%>" />
+			<input class="cbi-button cbi-button-edit" type="button" onclick="set_node('tcp')" value="TCP" />
+			<input class="cbi-button cbi-button-edit" type="button" onclick="set_node('udp')" value="UDP" />
+			<input class="cbi-button cbi-button-remove" type="button" onclick="close_set_node_div()" value="<%:Close%>" />
 		</div>
 	</div>
 </div>

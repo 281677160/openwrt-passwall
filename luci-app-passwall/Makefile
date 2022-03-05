@@ -6,9 +6,9 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-passwall
-PKG_VERSION:=4.51
-PKG_RELEASE:=2
-#20220228
+PKG_VERSION:=4.50
+PKG_RELEASE:=3
+#20220219
 
 PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Brook \
@@ -16,6 +16,7 @@ PKG_CONFIG_DEPENDS:= \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Haproxy \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_IPv6_Nat \
+	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_PDNSD \
 	CONFIG_PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Client \
@@ -35,14 +36,15 @@ PKG_CONFIG_DEPENDS:= \
 LUCI_TITLE:=LuCI support for PassWall
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+coreutils +coreutils-base64 +coreutils-nohup +curl \
-	+dnsmasq-full +dns2socks +ip-full +ipset +ipt2socks +iptables +iptables-mod-tproxy +iptables-mod-iprange \
-	+kmod-ipt-nat +libuci-lua +lua +luci-compat +luci-lib-jsonc +microsocks +resolveip +tcping \
+	+dnsmasq-full +luci-compat +dns2socks +ipset +ip-full +ipt2socks +iptables-mod-tproxy +iptables-mod-iprange \
+	+libuci-lua +lua +luci-lib-jsonc +microsocks +tcping +resolveip \
 	+unzip \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Brook:brook \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_ChinaDNS_NG:chinadns-ng \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Haproxy:haproxy \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Hysteria:hysteria \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_IPv6_Nat:ip6tables-mod-nat \
+	+PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun:kcptun-client \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy:naiveproxy \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_PDNSD:pdnsd-alt \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Shadowsocks_Libev_Client:shadowsocks-libev-ss-local \
@@ -60,7 +62,7 @@ LUCI_DEPENDS:=+coreutils +coreutils-base64 +coreutils-nohup +curl \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Xray:xray-core \
 	+PACKAGE_$(PKG_NAME)_INCLUDE_Xray_Plugin:xray-plugin
 
-define Package/$(PKG_NAME)/config
+define Package/luci-app-passwall/config
 menu "Configuration"
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_Brook
@@ -84,9 +86,13 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_IPv6_Nat
 	bool "Include IPv6 Nat"
 	default n
 
+config PACKAGE_$(PKG_NAME)_INCLUDE_Kcptun
+	bool "Include Kcptun"
+	default n
+
 config PACKAGE_$(PKG_NAME)_INCLUDE_NaiveProxy
 	bool "Include NaiveProxy"
-	depends on !(arc||(arm&&TARGET_gemini)||armeb||mips||mips64||powerpc)
+	depends on !(arc||armeb||mips||mips64||powerpc||TARGET_gemini)
 	default n
 
 config PACKAGE_$(PKG_NAME)_INCLUDE_PDNSD
@@ -145,7 +151,7 @@ config PACKAGE_$(PKG_NAME)_INCLUDE_Xray_Plugin
 endmenu
 endef
 
-define Package/$(PKG_NAME)/conffiles
+define Package/luci-app-passwall/conffiles
 /etc/config/passwall
 /etc/config/passwall_server
 /usr/share/passwall/rules/direct_host
@@ -158,6 +164,6 @@ define Package/$(PKG_NAME)/conffiles
 /usr/share/passwall/rules/lanlist_ipv6
 endef
 
-include $(TOPDIR)/feeds/luci/luci.mk
+include ../../luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature
