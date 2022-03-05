@@ -45,8 +45,8 @@ jobs:
         svn co https://github.com/immortalwrt/luci/branches/openwrt-18.06/applications/luci-app-passwall shangyou/luci-app-passwall
         cd shangyou
         find . -name '*.git' -o -name '*.svn' | xargs -i rm -rf {}
-        git clone -b main https://github.com/${{github.repository}}.git repogx
         cd ../
+        git clone -b main https://github.com/${{github.repository}}.git repogx
         cd repogx
         rm -Rf *
         git rm --cache *
