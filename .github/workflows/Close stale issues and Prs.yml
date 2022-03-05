@@ -42,7 +42,7 @@ jobs:
     - name: 整理数据
       run: |
         git clone -b packages https://github.com/xiaorouji/openwrt-passwall shangyou
-        svn co https://github.com/immortalwrt/luci/branches/openwrt-18.06/applications/luci-app-passwall shangyou/luci-app-passwall
+        svn co https://github.com/kenzok8/openwrt-packages/trunk/luci-app-passwall shangyou/luci-app-passwall
         cd shangyou
         find . -name '*.git' -o -name '*.svn' | xargs -i rm -rf {}
         cd ../
