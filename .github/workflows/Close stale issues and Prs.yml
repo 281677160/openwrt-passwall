@@ -1,20 +1,11 @@
-#
-# 同步上游仓库或者清理发布都需要用REPO_TOKEN密匙
-#
-# 记住，同步上游是不会同步您任何自建文件夹的，所以同步后您要自己对比我现有的文件夹里面diy-part.sh和settings.ini文件有没有更新
-#
-# REPO_TOKEN密匙制作教程：https://git.io/jm.md
-#
+# Update-passwall
 
-
-name: 同步上游仓库
+name: Update-passwall
 on:
   workflow_dispatch:
-    inputs:
-      again-fork:
-        description: '[fork-actions]改成[fork],再按[Run workflow]按钮启动,开启同步上游仓库'
-        required: false
-        default: 'fork-actions'
+        
+  schedule:
+   - cron: 0 12 1,8,15,22,28 * *
 
 env:
   REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
@@ -23,7 +14,7 @@ env:
 jobs:
   del_runs:
     runs-on: Ubuntu-20.04
-    name: 同步上游仓库
+    name: Update-passwall
     
     steps:
     - name: 准备结束
@@ -41,7 +32,7 @@ jobs:
           
     - name: 整理数据
       run: |
-        git clone -b packages https://github.com/xiaorouji/openwrt-passwall shangyou
+        git clone https://github.com/kenzok8/small.git shangyou
         svn co https://github.com/kenzok8/openwrt-packages/trunk/luci-app-passwall shangyou/luci-app-passwall
         cd shangyou
         find . -name '*.git' -o -name '*.svn' | xargs -i rm -rf {}
