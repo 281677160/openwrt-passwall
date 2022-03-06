@@ -45,6 +45,7 @@ jobs:
           cd repogx
           rm -Rf *
           git rm --cache *
+          echo "$(date +%Y%m%d%H%M%S)" > README.md
           cp -Rf $GITHUB_WORKSPACE/shangyou/* ./
         else
           cd repogx
