@@ -17,10 +17,10 @@ jobs:
     name: Update-passwall
     
     steps:
-    - name: 准备结束
+    - name: Checkout
       uses: actions/checkout@v2
       
-    - name: 部署环境
+    - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
@@ -30,7 +30,8 @@ jobs:
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
           
-    - name: 整理数据
+    - name: github-actions
+      if: env.REPO_TOKEN
       run: |
         git clone https://github.com/kenzok8/small.git shangyou
         svn co https://github.com/kenzok8/openwrt-packages/trunk/luci-app-passwall shangyou/luci-app-passwall
@@ -45,3 +46,12 @@ jobs:
         git add .
         git commit -m "Update"
         git push --quiet "https://${{ secrets.REPO_TOKEN }}@github.com/${{github.repository}}" HEAD:main
+        
+    - name: Delete workflow runs
+      if: env.REPO_TOKEN
+      uses: Mattraks/delete-workflow-runs@main
+      with:
+          token: ${{ secrets.REPO_TOKEN }}
+          repository: ${{ github.repository }}
+          keep_minimum_runs: 0
+          retain_days: 0.5
