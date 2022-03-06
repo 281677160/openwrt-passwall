@@ -37,6 +37,7 @@ jobs:
         svn co https://github.com/kenzok8/openwrt-packages/trunk/luci-app-passwall shangyou/luci-app-passwall
         cd shangyou
         find . -name '*.git' -o -name '*.svn' | xargs -i rm -rf {}
+        echo "luci-app-passwall" > README.md
         cd ../
         git clone -b main https://github.com/${{github.repository}}.git repogx
         cd repogx
@@ -54,4 +55,4 @@ jobs:
           token: ${{ secrets.REPO_TOKEN }}
           repository: ${{ github.repository }}
           keep_minimum_runs: 0
-          retain_days: 0.5
+          retain_days: 0.1
