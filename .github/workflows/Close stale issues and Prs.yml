@@ -38,6 +38,7 @@ jobs:
         cd shangyou
         find . -name '*.git' -o -name '*.svn' | xargs -i rm -rf {}
         echo "luci-app-passwall" > README.md
+        rm -rf shadowsocks-libev
         cd ../
         git clone -b main https://github.com/${{github.repository}}.git repogx
         cd repogx
