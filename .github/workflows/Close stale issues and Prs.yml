@@ -31,6 +31,7 @@ jobs:
         git config --global user.name "github-actions[bot]"
           
     - name: github-actions
+      continue-on-error: true
       if: env.REPO_TOKEN
       run: |
         git clone https://github.com/kenzok8/small.git shangyou
@@ -41,7 +42,6 @@ jobs:
         rm -rf ./{shadowsocks-libev,v2raya}
         cd ../
         git clone -b main https://github.com/${{github.repository}}.git repogx
-        echo "$(date +%Y%m%d%H%M%S)" > repogx/README.md
         if [[ `ls $GITHUB_WORKSPACE/shangyou | grep -c "luci-app-passwall"` -eq '1' ]]; then
           cd repogx
           rm -Rf *
