@@ -41,11 +41,11 @@ jobs:
         rm -rf ./{shadowsocks-libev,v2raya}
         cd ../
         git clone -b main https://github.com/${{github.repository}}.git repogx
+        echo "$(date +%Y%m%d%H%M%S)" > repogx/README.md
         if [[ `ls $GITHUB_WORKSPACE/shangyou | grep -c "luci-app-passwall"` -eq '1' ]]; then
           cd repogx
           rm -Rf *
           git rm --cache *
-          echo "$(date +%Y%m%d%H%M%S)" > README.md
           cp -Rf $GITHUB_WORKSPACE/shangyou/* ./
         else
           cd repogx
