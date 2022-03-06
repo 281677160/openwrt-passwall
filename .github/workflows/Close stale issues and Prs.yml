@@ -41,10 +41,13 @@ jobs:
         rm -rf ./{shadowsocks-libev,v2raya}
         cd ../
         git clone -b main https://github.com/${{github.repository}}.git repogx
-        cd repogx
-        rm -Rf *
-        git rm --cache *
-        cp -Rf $GITHUB_WORKSPACE/shangyou/* ./
+        if [[ `ls $GITHUB_WORKSPACE/shangyou | grep -c "luci-app-passwall"` -eq '1' ]]; then
+          cd repogx
+          rm -Rf *
+          git rm --cache *
+          cp -Rf $GITHUB_WORKSPACE/shangyou/* ./
+        fi
+        cd $GITHUB_WORKSPACE/repogx
         git add .
         git commit -m "Update"
         git push --quiet "https://${{ secrets.REPO_TOKEN }}@github.com/${{github.repository}}" HEAD:main
