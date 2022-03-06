@@ -1,6 +1,6 @@
 # Update-passwall
 
-name: Update-passwall
+name: Close stale issues and Prs
 on:
   workflow_dispatch:
         
