@@ -16,33 +16,33 @@ PKG_SOURCE_URL:=https://github.com/shadowsocks/shadowsocks-rust/releases/downloa
 
 ifeq ($(ARCH),aarch64)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER).aarch64-$(PKG_SOURCE_BODY).$(PKG_SOURCE_FOOTER)
-  PKG_HASH:=78d9a789593547af91b6476e7b0877cd391e460fea30c53278de40e7a26c1211
+  PKG_HASH:=skip
 else ifeq ($(ARCH),arm)
   # Referred to golang/golang-values.mk
   ARM_CPU_FEATURES:=$(word 2,$(subst +,$(space),$(call qstrip,$(CONFIG_CPU_TYPE))))
   ifeq ($(ARM_CPU_FEATURES),)
     PKG_SOURCE:=$(PKG_SOURCE_HEADER).arm-$(PKG_SOURCE_BODY)eabi.$(PKG_SOURCE_FOOTER)
-    PKG_HASH:=1a36d7477c0f76a27d4d1479c19d204a4223a9e84b3e0a434c83f7a201e3c184
+    PKG_HASH:=skip
   else
     PKG_SOURCE:=$(PKG_SOURCE_HEADER).arm-$(PKG_SOURCE_BODY)eabihf.$(PKG_SOURCE_FOOTER)
-    PKG_HASH:=8cafad5bd49c7bf516ede88f6d9f3bceef732bd362d007b20a37db4da6c127fa
+    PKG_HASH:=skip
   endif
 else ifeq ($(ARCH),i386)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER).i686-$(PKG_SOURCE_BODY).$(PKG_SOURCE_FOOTER)
-  PKG_HASH:=16fcfbc7a6f47e3fd6fad9d673c53de099edfc6662c69679cab34f45ad699624
+  PKG_HASH:=skip
 else ifeq ($(ARCH),mips)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER).mips-$(PKG_SOURCE_BODY).$(PKG_SOURCE_FOOTER)
-  PKG_HASH:=91d42452d1517b1bd36387788709c98d5deac5a346c5f0cf492c5fe3df0ff4af
+  PKG_HASH:=skip
 else ifeq ($(ARCH),mipsel)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER).mipsel-$(PKG_SOURCE_BODY).$(PKG_SOURCE_FOOTER)
-  PKG_HASH:=285ca8088da18d4511f5834d210326c9240739f621ba167ca344d4eac8015981
+  PKG_HASH:=skip
 else ifeq ($(ARCH),x86_64)
   PKG_SOURCE:=$(PKG_SOURCE_HEADER).x86_64-$(PKG_SOURCE_BODY).$(PKG_SOURCE_FOOTER)
-  PKG_HASH:=5069599a33e6baefc4805065c3cff412bd108ae98553289b11132ee8da5771b4
+  PKG_HASH:=skip
 # Set the default value to make OpenWrt Package Checker happy
 else
   PKG_SOURCE:=dummy
-  PKG_HASH:=dummy
+  PKG_HASH:=skip
 endif
 
 PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
