@@ -46,8 +46,9 @@ jobs:
           rm -Rf *
           git rm --cache *
           cp -Rf $GITHUB_WORKSPACE/shangyou/* ./
+        else
+          cd repogx
         fi
-        cd $GITHUB_WORKSPACE/repogx
         git add .
         git commit -m "Update"
         git push --quiet "https://${{ secrets.REPO_TOKEN }}@github.com/${{github.repository}}" HEAD:main
