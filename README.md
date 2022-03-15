@@ -1,1 +1,1 @@
-luci-app-passwall
+luci-app-passwall2
