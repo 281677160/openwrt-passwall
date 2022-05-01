@@ -265,7 +265,7 @@ lua_api() {
 
 run_v2ray() {
 	local flag node redir_port socks_address socks_port socks_username socks_password http_address http_port http_username http_password
-	local dns_listen_port direct_dns_protocol direct_dns_udp_server direct_dns_tcp_server direct_dns_doh remote_dns_protocol remote_dns_udp_server remote_dns_udp_local remote_dns_tcp_server remote_dns_doh remote_dns_client_ip dns_query_strategy dns_cache
+	local dns_listen_port direct_dns_protocol direct_dns_udp_server direct_dns_tcp_server direct_dns_doh remote_dns_protocol remote_dns_udp_server remote_dns_tcp_server remote_dns_doh remote_dns_client_ip dns_query_strategy dns_cache
 	local loglevel log_file config_file
 	local _extra_param=""
 	eval_set_val $@
@@ -300,9 +300,11 @@ run_v2ray() {
 		local route_only=$(config_t_get global_forwarding route_only 0)
 		[ "${route_only}" = "1" ] && _extra_param="${_extra_param} -route_only 1"
 	}
+	local buffer_size=$(config_t_get global_forwarding buffer_size)
+	[ -n "${buffer_size}" ] && _extra_param="${_extra_param} -buffer_size ${buffer_size}"
 	[ "$direct_dns_protocol" = "auto" ] && {
 		direct_dns_protocol="udp"
-		direct_dns_udp_server=${DEFAULT_DNS:-119.29.29.29}
+		direct_dns_udp_server=${AUTO_DNS}
 	}
 	case "$direct_dns_protocol" in
 		udp)
@@ -332,12 +334,11 @@ run_v2ray() {
 		;;
 	esac
 	case "$remote_dns_protocol" in
-		udp*)
+		udp)
 			local _dns=$(get_first_dns remote_dns_udp_server 53 | sed 's/#/:/g')
 			local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
 			local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
 			_extra_param="${_extra_param} -remote_dns_server ${_dns_address} -remote_dns_port ${_dns_port} -remote_dns_udp_server ${_dns_address}"
-			[ "$remote_dns_protocol" = "udp+local" ] && _extra_param="${_extra_param} -remote_dns_udp_local 1"
 		;;
 		tcp)
 			local _dns=$(get_first_dns remote_dns_tcp_server 53 | sed 's/#/:/g')
@@ -363,7 +364,7 @@ run_v2ray() {
 		;;
 	esac
 	lua $API_GEN_V2RAY -node $node -redir_port $redir_port -tcp_proxy_way $tcp_proxy_way -loglevel $loglevel ${_extra_param} > $config_file
-	ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $log_file -config="$config_file"
+	ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $log_file run -c "$config_file"
 }
 
 run_socks() {
@@ -416,8 +417,8 @@ run_socks() {
 			config_file=$(echo $config_file | sed "s/SOCKS/HTTP_SOCKS/g")
 			local _extra_param="-local_http_port $http_port"
 		}
-		lua $API_GEN_V2RAY -node $node -local_socks_port $socks_port ${_extra_param} > $config_file
-		ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $log_file -config="$config_file"
+		lua $API_GEN_V2RAY -flag SOCKS_$flag -node $node -local_socks_port $socks_port ${_extra_param} > $config_file
+		ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $log_file run -c "$config_file"
 	;;
 	naiveproxy)
 		lua $API_GEN_NAIVE -node $node -run_type socks -local_addr $bind -local_port $socks_port -server_host $server_host -server_port $port > $config_file
@@ -477,8 +478,9 @@ run_socks() {
 		fi
 		[ -z "$type" ] && return 1
 		lua $API_GEN_V2RAY_PROTO -local_http_port $http_port -server_proto socks -server_address "127.0.0.1" -server_port $socks_port -server_username $_username -server_password $_password > $http_config_file
-		ln_run "$bin" ${type} /dev/null -config="$http_config_file"
+		ln_run "$bin" ${type} /dev/null run -c "$http_config_file"
 	}
+	unset http_flag
 }
 
 node_switch() {
@@ -547,9 +549,10 @@ run_global() {
 		V2RAY_ARGS="${V2RAY_ARGS} direct_dns_protocol=${DIRECT_DNS_PROTOCOL}"
 		case "$DIRECT_DNS_PROTOCOL" in
 			auto)
-				msg="${msg} 直连DNS：${DEFAULT_DNS:-119.29.29.29}"
+				msg="${msg} 直连DNS：${AUTO_DNS}"
 			;;
 			udp)
+				LOCAL_DNS=${DIRECT_DNS}
 				V2RAY_ARGS="${V2RAY_ARGS} direct_dns_udp_server=${DIRECT_DNS}"
 				msg="${msg} 直连DNS：${DIRECT_DNS}"
 			;;
@@ -592,7 +595,7 @@ run_global() {
 	echolog ${msg}
 	
 	source $APP_PATH/helper_dnsmasq.sh stretch
-	source $APP_PATH/helper_dnsmasq.sh add TMP_DNSMASQ_PATH=$TMP_DNSMASQ_PATH DNSMASQ_CONF_FILE=/tmp/dnsmasq.d/dnsmasq-passwall2.conf DEFAULT_DNS=$DEFAULT_DNS TUN_DNS=$TUN_DNS
+	source $APP_PATH/helper_dnsmasq.sh add TMP_DNSMASQ_PATH=$TMP_DNSMASQ_PATH DNSMASQ_CONF_FILE=/tmp/dnsmasq.d/dnsmasq-passwall2.conf DEFAULT_DNS=$AUTO_DNS LOCAL_DNS=$LOCAL_DNS TUN_DNS=$TUN_DNS
 
 	V2RAY_CONFIG=$TMP_PATH/global.json
 	V2RAY_LOG=$TMP_PATH/global.log
@@ -748,8 +751,8 @@ start() {
 			run_global
 			source $APP_PATH/iptables.sh start
 			source $APP_PATH/helper_dnsmasq.sh logic_restart
-			sysctl -w net.bridge.bridge-nf-call-iptables=0 2>/dev/null
-			[ "$PROXY_IPV6" == "1" ] && sysctl -w net.bridge.bridge-nf-call-ip6tables=0 2>/dev/null
+			sysctl -w net.bridge.bridge-nf-call-iptables=0 >/dev/null 2>&1
+			[ "$PROXY_IPV6" == "1" ] && sysctl -w net.bridge.bridge-nf-call-ip6tables=0 >/dev/null 2>&1
 		fi
 	}
 	start_crontab
@@ -786,12 +789,11 @@ RESOLVFILE=/tmp/resolv.conf.d/resolv.conf.auto
 [ -f "${RESOLVFILE}" ] && [ -s "${RESOLVFILE}" ] || RESOLVFILE=/tmp/resolv.conf.auto
 TCP_NO_REDIR_PORTS=$(config_t_get global_forwarding tcp_no_redir_ports 'disable')
 UDP_NO_REDIR_PORTS=$(config_t_get global_forwarding udp_no_redir_ports 'disable')
-TCP_REDIR_PORTS="1:65535"
-UDP_REDIR_PORTS="1:65535"
+TCP_REDIR_PORTS=$(config_t_get global_forwarding tcp_redir_ports '22,25,53,143,465,587,853,993,995,80,443')
+UDP_REDIR_PORTS=$(config_t_get global_forwarding udp_redir_ports '1:65535')
 TCP_PROXY_MODE="global"
 UDP_PROXY_MODE="global"
-LOCALHOST_TCP_PROXY_MODE="global"
-LOCALHOST_UDP_PROXY_MODE="global"
+LOCALHOST_PROXY=$(config_t_get global localhost_proxy '1')
 DIRECT_DNS_PROTOCOL=$(config_t_get global direct_dns_protocol tcp)
 DIRECT_DNS=$(config_t_get global direct_dns 119.29.29.29:53 | sed 's/#/:/g' | sed -E 's/\:([^:]+)$/#\1/g')
 REMOTE_DNS_PROTOCOL=$(config_t_get global remote_dns_protocol tcp)
@@ -801,6 +803,7 @@ DNS_CACHE=$(config_t_get global dns_cache 1)
 
 DEFAULT_DNS=$(uci show dhcp | grep "@dnsmasq" | grep "\.server=" | awk -F '=' '{print $2}' | sed "s/'//g" | tr ' ' '\n' | grep -v "\/" | head -2 | sed ':label;N;s/\n/,/;b label')
 [ -z "${DEFAULT_DNS}" ] && DEFAULT_DNS=$(echo -n $(sed -n 's/^nameserver[ \t]*\([^ ]*\)$/\1/p' "${RESOLVFILE}" | grep -v -E "0.0.0.0|127.0.0.1|::" | head -2) | tr ' ' ',')
+AUTO_DNS=${DEFAULT_DNS:-119.29.29.29}
 
 PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)
 

@@ -144,6 +144,10 @@ if (has_v2ray or has_xray) and #nodes_table > 0 then
     end
 end
 
+o = s:taboption("Main", Flag, "localhost_proxy", translate("Localhost Proxy"), translate("When selected, localhost can transparent proxy."))
+o.default = "1"
+o.rmempty = false
+
 s:tab("DNS", translate("DNS"))
 
 o = s:taboption("DNS", ListValue, "direct_dns_protocol", translate("Direct DNS Protocol"))
@@ -176,7 +180,6 @@ o = s:taboption("DNS", ListValue, "remote_dns_protocol", translate("Remote DNS P
 o:value("tcp", "TCP")
 o:value("doh", "DoH")
 o:value("udp", "UDP")
-o:value("udp+local", "UDP+Local")
 o:value("fakedns", "FakeDNS")
 
 ---- DNS Forward
@@ -192,7 +195,6 @@ o:value("208.67.220.220", "208.67.220.220 (OpenDNS)")
 o:value("208.67.222.222", "208.67.222.222 (OpenDNS)")
 o:depends("remote_dns_protocol", "tcp")
 o:depends("remote_dns_protocol", "udp")
-o:depends("remote_dns_protocol", "udp+local")
 
 ---- DoH
 o = s:taboption("DNS", Value, "remote_dns_doh", translate("Remote DNS DoH"))

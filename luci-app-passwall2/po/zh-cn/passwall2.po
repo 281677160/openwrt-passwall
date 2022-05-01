@@ -79,6 +79,12 @@ msgstr "主开关"
 msgid "Edit Current Node"
 msgstr "编辑当前节点"
 
+msgid "Localhost Proxy"
+msgstr "路由器本机代理"
+
+msgid "When selected, localhost can transparent proxy."
+msgstr "当勾选时，路由器本机可以透明代理。"
+
 msgid "Socks Config"
 msgstr "Socks配置"
 
@@ -1137,3 +1143,9 @@ msgstr "不进行流量嗅探的域名列表"
 
 msgid "Hosts added into No Sniffing Lists will not resolve again on server (Xray only)."
 msgstr "加入的域名不会再次在服务器解析（仅适用于Xray）。"
+
+msgid "Buffer Size (Xray)"
+msgstr "缓冲区大小（Xray）"
+
+msgid "Buffer size for every connection (kB)"
+msgstr "每一个连接的缓冲区大小（kB）"
