@@ -1,10 +1,15 @@
 
 config global
 	option enabled '0'
+	option localhost_proxy '1'
 	option socks_enabled '0'
 	option node 'myshunt'
-	option dns_protocol 'tcp'
-	option dns_forward '1.1.1.1'
+	option direct_dns_protocol 'auto'
+	option remote_dns_protocol 'tcp'
+	option remote_dns '1.1.1.1'
+	option dns_query_strategy 'UseIPv4'
+	option dns_hosts 'cloudflare-dns.com 1.1.1.1
+dns.google.com 8.8.8.8'
 	option close_log '0'
 	option loglevel 'error'
 
@@ -14,9 +19,10 @@ config global_delay
 	option start_delay '1'
 
 config global_forwarding
-	option process '0'
 	option tcp_no_redir_ports 'disable'
-	option udp_no_redir_ports '53'
+	option udp_no_redir_ports 'disable'
+	option tcp_redir_ports '22,25,53,143,465,587,853,993,995,80,443'
+	option udp_redir_ports '1:65535'
 	option accept_icmp '0'
 	option tcp_proxy_way 'redirect'
 	option ipv6_tproxy '0'
@@ -57,40 +63,33 @@ config nodes 'myshunt'
 	option remarks '分流总节点'
 	option type 'Xray'
 	option protocol '_shunt'
+	option Direct '_direct'
 	option AD 'nil'
 	option BT '_direct'
-	option TVB 'nil'
-	option China '_direct'
-	option default_node 'nil'
-	option LAN '_direct'
-	option Direct '_direct'
-	option Proxy '_default'
 	option Netflix 'nil'
+	option TVB 'nil'
+	option Proxy '_default'
+	option China '_direct'
+	option QUIC '_blackhole'
+	option UDP 'nil'
+	option default_node 'nil'
 	option domainStrategy 'IPOnDemand'
 	option domainMatcher 'hybrid'
 
-config shunt_rules 'LAN'
-	option remarks 'LAN'
-	option network 'tcp,udp'
-	option ip_list '0.0.0.0/8
-10.0.0.0/8
-100.64.0.0/10
-127.0.0.0/8
-169.254.0.0/16
-172.16.0.0/12
-192.168.0.0/16
-224.0.0.0/4
-240.0.0.0/4
-'
-
 config shunt_rules 'Direct'
 	option network 'tcp,udp'
+	option remarks 'Direct'
+	option ip_list 'geoip:private
+114.114.114.114
+114.114.115.115
+223.5.5.5
+223.6.6.6
+119.29.29.29
+180.76.76.76
+'
 	option domain_list 'apple.com
 microsoft.com
 dyndns.com
-douyucdn.cn
-douyucdn2.cn
-
 steamcontent.com
 dl.steam.clngaa.com
 dl.steam.ksyna.com
@@ -102,14 +101,6 @@ cdn-ws.content.steamchina.com
 cdn-qc.content.steamchina.com
 cdn-ali.content.steamchina.com
 epicgames-download1-1251447533.file.myqcloud.com'
-	option remarks 'Direct'
-	option ip_list '114.114.114.114
-114.114.115.115
-223.5.5.5
-223.6.6.6
-119.29.29.29
-180.76.76.76
-'
 
 config shunt_rules 'AD'
 	option remarks 'AD'
@@ -124,50 +115,24 @@ config shunt_rules 'BT'
 config shunt_rules 'Netflix'
 	option remarks 'Netflix'
 	option network 'tcp,udp'
-	option domain_list 'fast.com
-netflix
-netflix.com
-netflix.net
-nflxso.net
-nflxext.com
-nflximg.com
-nflximg.net
-nflxvideo.net
-netflixdnstest0.com
-netflixdnstest1.com
-netflixdnstest2.com
-netflixdnstest3.com
-netflixdnstest4.com
-netflixdnstest5.com
-netflixdnstest6.com
-netflixdnstest7.com
-netflixdnstest8.com
-netflixdnstest9.com
-geosite:netflix'
+	option domain_list 'geosite:netflix'
 
 config shunt_rules 'TVB'
 	option remarks 'TVB'
 	option network 'tcp,udp'
-	option domain_list 'tvb.com
-mytvsuper.com'
+	option domain_list 'geosite:tvb
+geosite:mytvsuper
+'
 
 config shunt_rules 'Proxy'
 	option network 'tcp,udp'
-	option domain_list 'bing.com
-sspanel.net
-v2ex.com
-
-googleapis.cn
-googleapis.com
-google.com.tw
-google.com.hk
-gstatic.com
-xn--ngstr-lra8j.com
-
-github.com
+	option remarks 'Proxy'
+	option domain_list 'geosite:bing
+geosite:google
+geosite:github
+domain:sspanel.net
+domain:v2ex.com
 '
-
-option remarks 'Proxy'
 	option ip_list '149.154.160.0/20
 91.108.4.0/22
 91.108.56.0/24
@@ -187,6 +152,10 @@ option remarks 'Proxy'
 2001:b28:f23d::/48
 2001:b28:f23f::/48
 2001:b28:f242::/48
+2001:4860:4860::8888
+2001:4860:4860::8844
+2606:4700:4700::1111
+2606:4700:4700::1001
 '
 
 config shunt_rules 'China'
@@ -194,4 +163,12 @@ config shunt_rules 'China'
 	option network 'tcp,udp'
 	option ip_list 'geoip:cn'
 	option domain_list 'geosite:cn'
-	
+
+config shunt_rules 'QUIC'
+	option remarks 'QUIC'
+	option port '80,443'
+	option network 'udp'
+
+config shunt_rules 'UDP'
+	option remarks 'UDP'
+	option network 'udp'
