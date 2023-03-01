@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright (C) 2022 xiaorouji
+# Copyright (C) 2022-2023 xiaorouji
 
 . $IPKG_INSTROOT/lib/functions.sh
 . $IPKG_INSTROOT/lib/functions/service.sh
@@ -21,15 +21,15 @@ RULES_PATH=/usr/share/${CONFIG}/rules
 TUN_DNS_PORT=15353
 TUN_DNS="127.0.0.1#${TUN_DNS_PORT}"
 DEFAULT_DNS=
+IFACES=
 NO_PROXY=0
 PROXY_IPV6=0
 PROXY_IPV6_UDP=0
-LUA_API_PATH=/usr/lib/lua/luci/model/cbi/$CONFIG/api
-API_GEN_SS=$LUA_API_PATH/gen_shadowsocks.lua
-API_GEN_V2RAY=$LUA_API_PATH/gen_v2ray.lua
-API_GEN_V2RAY_PROTO=$LUA_API_PATH/gen_v2ray_proto.lua
-API_GEN_NAIVE=$LUA_API_PATH/gen_naiveproxy.lua
-API_GEN_HYSTERIA=$LUA_API_PATH/gen_hysteria.lua
+LUA_UTIL_PATH=/usr/lib/lua/luci/passwall2
+UTIL_SS=$LUA_UTIL_PATH/util_shadowsocks.lua
+UTIL_XRAY=$LUA_UTIL_PATH/util_xray.lua
+UTIL_NAIVE=$LUA_UTIL_PATH/util_naiveproxy.lua
+UTIL_HYSTERIA=$LUA_UTIL_PATH/util_hysteria.lua
 V2RAY_ARGS=""
 V2RAY_CONFIG=""
 
@@ -260,23 +260,23 @@ lua_api() {
 		echo "nil"
 		return
 	}
-	echo $(lua -e "local api = require 'luci.model.cbi.passwall2.api.api' print(api.${func})")
+	echo $(lua -e "local api = require 'luci.passwall2.api' print(api.${func})")
 }
 
 run_v2ray() {
 	local flag node redir_port socks_address socks_port socks_username socks_password http_address http_port http_username http_password
-	local dns_listen_port direct_dns_protocol direct_dns_udp_server direct_dns_tcp_server direct_dns_doh remote_dns_protocol remote_dns_udp_server remote_dns_tcp_server remote_dns_doh remote_dns_client_ip dns_query_strategy dns_cache
+	local dns_listen_port direct_dns_protocol direct_dns_udp_server direct_dns_tcp_server direct_dns_doh direct_dns_client_ip direct_dns_query_strategy remote_dns_protocol remote_dns_udp_server remote_dns_tcp_server remote_dns_doh remote_dns_client_ip remote_dns_query_strategy dns_cache
 	local loglevel log_file config_file
 	local _extra_param=""
 	eval_set_val $@
 	local type=$(echo $(config_n_get $node type) | tr 'A-Z' 'a-z')
 	if [ "$type" != "v2ray" ] && [ "$type" != "xray" ]; then
-		local bin=$(first_type $(config_t_get global_app v2ray_file) v2ray)
+		local bin=$(first_type $(config_t_get global_app xray_file) xray)
 		if [ -n "$bin" ]; then
-			type="v2ray"
+			type="xray"
 		else
-			bin=$(first_type $(config_t_get global_app xray_file) xray)
-			[ -n "$bin" ] && type="xray"
+			bin=$(first_type $(config_t_get global_app v2ray_file) v2ray)
+			[ -n "$bin" ] && type="v2ray"
 		fi
 	fi
 	[ -z "$type" ] && return 1
@@ -290,10 +290,6 @@ run_v2ray() {
 	[ -n "$http_address" ] && _extra_param="${_extra_param} -local_http_address $http_address"
 	[ -n "$http_port" ] && _extra_param="${_extra_param} -local_http_port $http_port"
 	[ -n "$http_username" ] && [ -n "$http_password" ] && _extra_param="${_extra_param} -local_http_username $http_username -local_http_password $http_password"
-	[ -n "$dns_listen_port" ] && _extra_param="${_extra_param} -dns_listen_port ${dns_listen_port}"
-	[ -n "$dns_query_strategy" ] && _extra_param="${_extra_param} -dns_query_strategy ${dns_query_strategy}"
-	[ -n "$remote_dns_client_ip" ] && _extra_param="${_extra_param} -remote_dns_client_ip ${remote_dns_client_ip}"
-	[ -n "$dns_cache" ] && _extra_param="${_extra_param} -dns_cache ${dns_cache}"
 	local sniffing=$(config_t_get global_forwarding sniffing 1)
 	[ "${sniffing}" = "1" ] && {
 		_extra_param="${_extra_param} -sniffing 1"
@@ -302,68 +298,112 @@ run_v2ray() {
 	}
 	local buffer_size=$(config_t_get global_forwarding buffer_size)
 	[ -n "${buffer_size}" ] && _extra_param="${_extra_param} -buffer_size ${buffer_size}"
-	[ "$direct_dns_protocol" = "auto" ] && {
-		direct_dns_protocol="udp"
-		direct_dns_udp_server=${AUTO_DNS}
+	
+	local protocol=$(config_n_get $node protocol)
+	[ "$protocol" == "_iface" ] && {
+		IFACES="$IFACES $(config_n_get $node iface)"
 	}
-	case "$direct_dns_protocol" in
-		udp)
-			local _dns=$(get_first_dns direct_dns_udp_server 53 | sed 's/#/:/g')
-			local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
-			local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
-			_extra_param="${_extra_param} -direct_dns_server ${_dns_address} -direct_dns_port ${_dns_port} -direct_dns_udp_server ${_dns_address}"
-		;;
-		tcp)
-			local _dns=$(get_first_dns direct_dns_tcp_server 53 | sed 's/#/:/g')
-			local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
-			local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
-			_extra_param="${_extra_param} -direct_dns_server ${_dns_address} -direct_dns_port ${_dns_port} -direct_dns_tcp_server tcp://${_dns}"
-		;;
-		doh)
-			local _doh_url=$(echo $direct_dns_doh | awk -F ',' '{print $1}')
-			local _doh_host_port=$(lua_api "get_domain_from_url(\"${_doh_url}\")")
-			#local _doh_host_port=$(echo $_doh_url | sed "s/https:\/\///g" | awk -F '/' '{print $1}')
-			local _doh_host=$(echo $_doh_host_port | awk -F ':' '{print $1}')
-			local is_ip=$(lua_api "is_ip(\"${_doh_host}\")")
-			local _doh_port=$(echo $_doh_host_port | awk -F ':' '{print $2}')
-			[ -z "${_doh_port}" ] && _doh_port=443
-			local _doh_bootstrap=$(echo $direct_dns_doh | cut -d ',' -sf 2-)
-			[ "${is_ip}" = "true" ] && _doh_bootstrap=${_doh_host}
-			[ -n "$_doh_bootstrap" ] && _extra_param="${_extra_param} -direct_dns_server ${_doh_bootstrap}"
-			_extra_param="${_extra_param} -direct_dns_port ${_doh_port} -direct_dns_doh_url ${_doh_url} -direct_dns_doh_host ${_doh_host}"
-		;;
-	esac
-	case "$remote_dns_protocol" in
-		udp)
-			local _dns=$(get_first_dns remote_dns_udp_server 53 | sed 's/#/:/g')
-			local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
-			local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
-			_extra_param="${_extra_param} -remote_dns_server ${_dns_address} -remote_dns_port ${_dns_port} -remote_dns_udp_server ${_dns_address}"
-		;;
-		tcp)
-			local _dns=$(get_first_dns remote_dns_tcp_server 53 | sed 's/#/:/g')
-			local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
-			local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
-			_extra_param="${_extra_param} -remote_dns_server ${_dns_address} -remote_dns_port ${_dns_port} -remote_dns_tcp_server tcp://${_dns}"
-		;;
-		doh)
-			local _doh_url=$(echo $remote_dns_doh | awk -F ',' '{print $1}')
-			local _doh_host_port=$(lua_api "get_domain_from_url(\"${_doh_url}\")")
-			#local _doh_host_port=$(echo $_doh_url | sed "s/https:\/\///g" | awk -F '/' '{print $1}')
-			local _doh_host=$(echo $_doh_host_port | awk -F ':' '{print $1}')
-			local is_ip=$(lua_api "is_ip(\"${_doh_host}\")")
-			local _doh_port=$(echo $_doh_host_port | awk -F ':' '{print $2}')
-			[ -z "${_doh_port}" ] && _doh_port=443
-			local _doh_bootstrap=$(echo $remote_dns_doh | cut -d ',' -sf 2-)
-			[ "${is_ip}" = "true" ] && _doh_bootstrap=${_doh_host}
-			[ -n "$_doh_bootstrap" ] && _extra_param="${_extra_param} -remote_dns_server ${_doh_bootstrap}"
-			_extra_param="${_extra_param} -remote_dns_port ${_doh_port} -remote_dns_doh_url ${_doh_url} -remote_dns_doh_host ${_doh_host}"
-		;;
-		fakedns)
+	
+	[ -n "$dns_listen_port" ] && {
+		V2RAY_DNS_DIRECT_CONFIG="${TMP_PATH}/${flag}_dns_direct.json"
+		V2RAY_DNS_DIRECT_LOG="${TMP_PATH}/${flag}_dns_direct.log"
+		V2RAY_DNS_DIRECT_ARGS="-dns_out_tag direct"
+		dns_direct_listen_port=$(get_new_port $(expr $dns_listen_port + 1) udp)
+		V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -dns_listen_port ${dns_direct_listen_port}"
+		[ "$direct_dns_protocol" = "auto" ] && {
+			direct_dns_protocol="udp"
+			direct_dns_udp_server=${AUTO_DNS}
+		}
+		case "$direct_dns_protocol" in
+			udp)
+				local _dns=$(get_first_dns direct_dns_udp_server 53 | sed 's/#/:/g')
+				local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
+				local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
+				V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -direct_dns_server ${_dns_address} -direct_dns_port ${_dns_port} -direct_dns_udp_server ${_dns_address}"
+			;;
+			tcp)
+				local _dns=$(get_first_dns direct_dns_tcp_server 53 | sed 's/#/:/g')
+				local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
+				local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
+				V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -direct_dns_server ${_dns_address} -direct_dns_port ${_dns_port} -direct_dns_tcp_server tcp://${_dns}"
+			;;
+			doh)
+				local _doh_url=$(echo $direct_dns_doh | awk -F ',' '{print $1}')
+				local _doh_host_port=$(lua_api "get_domain_from_url(\"${_doh_url}\")")
+				#local _doh_host_port=$(echo $_doh_url | sed "s/https:\/\///g" | awk -F '/' '{print $1}')
+				local _doh_host=$(echo $_doh_host_port | awk -F ':' '{print $1}')
+				local is_ip=$(lua_api "is_ip(\"${_doh_host}\")")
+				local _doh_port=$(echo $_doh_host_port | awk -F ':' '{print $2}')
+				[ -z "${_doh_port}" ] && _doh_port=443
+				local _doh_bootstrap=$(echo $direct_dns_doh | cut -d ',' -sf 2-)
+				[ "${is_ip}" = "true" ] && _doh_bootstrap=${_doh_host}
+				[ -n "$_doh_bootstrap" ] && V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -direct_dns_server ${_doh_bootstrap}"
+				V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -direct_dns_port ${_doh_port} -direct_dns_doh_url ${_doh_url} -direct_dns_doh_host ${_doh_host}"
+			;;
+		esac
+		[ -n "$direct_dns_query_strategy" ] && V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -dns_query_strategy ${direct_dns_query_strategy}"
+		[ -n "$direct_dns_client_ip" ] && V2RAY_DNS_DIRECT_ARGS="${V2RAY_DNS_DIRECT_ARGS} -dns_client_ip ${direct_dns_client_ip}"
+		
+		lua $UTIL_XRAY gen_dns_config ${V2RAY_DNS_DIRECT_ARGS} > $V2RAY_DNS_DIRECT_CONFIG
+		ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $V2RAY_DNS_DIRECT_LOG run -c "$V2RAY_DNS_DIRECT_CONFIG"
+		
+		[ "$remote_dns_protocol" != "fakedns" ] && {
+			V2RAY_DNS_REMOTE_CONFIG="${TMP_PATH}/${flag}_dns_remote.json"
+			V2RAY_DNS_REMOTE_LOG="${TMP_PATH}/${flag}_dns_remote.log"
+			V2RAY_DNS_REMOTE_ARGS="-dns_out_tag remote"
+			dns_remote_listen_port=$(get_new_port $(expr $dns_listen_port + 2) udp)
+			V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -dns_listen_port ${dns_remote_listen_port}"
+			case "$remote_dns_protocol" in
+				udp)
+					local _dns=$(get_first_dns remote_dns_udp_server 53 | sed 's/#/:/g')
+					local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
+					local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
+					V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -remote_dns_server ${_dns_address} -remote_dns_port ${_dns_port} -remote_dns_udp_server ${_dns_address}"
+				;;
+				tcp)
+					local _dns=$(get_first_dns remote_dns_tcp_server 53 | sed 's/#/:/g')
+					local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
+					local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
+					V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -remote_dns_server ${_dns_address} -remote_dns_port ${_dns_port} -remote_dns_tcp_server tcp://${_dns}"
+				;;
+				doh)
+					local _doh_url=$(echo $remote_dns_doh | awk -F ',' '{print $1}')
+					local _doh_host_port=$(lua_api "get_domain_from_url(\"${_doh_url}\")")
+					#local _doh_host_port=$(echo $_doh_url | sed "s/https:\/\///g" | awk -F '/' '{print $1}')
+					local _doh_host=$(echo $_doh_host_port | awk -F ':' '{print $1}')
+					local is_ip=$(lua_api "is_ip(\"${_doh_host}\")")
+					local _doh_port=$(echo $_doh_host_port | awk -F ':' '{print $2}')
+					[ -z "${_doh_port}" ] && _doh_port=443
+					local _doh_bootstrap=$(echo $remote_dns_doh | cut -d ',' -sf 2-)
+					[ "${is_ip}" = "true" ] && _doh_bootstrap=${_doh_host}
+					[ -n "$_doh_bootstrap" ] && V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -remote_dns_server ${_doh_bootstrap}"
+					V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -remote_dns_port ${_doh_port} -remote_dns_doh_url ${_doh_url} -remote_dns_doh_host ${_doh_host}"
+				;;
+				fakedns)
+					V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -remote_dns_fake 1"
+				;;
+			esac
+			
+			[ -n "$remote_dns_query_strategy" ] && V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -dns_query_strategy ${remote_dns_query_strategy}"
+			[ -n "$remote_dns_client_ip" ] && V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -dns_client_ip ${remote_dns_client_ip}"
+			
+			V2RAY_DNS_REMOTE_ARGS="${V2RAY_DNS_REMOTE_ARGS} -remote_dns_outbound_socks_address 127.0.0.1 -remote_dns_outbound_socks_port ${socks_port}"
+			lua $UTIL_XRAY gen_dns_config ${V2RAY_DNS_REMOTE_ARGS} > $V2RAY_DNS_REMOTE_CONFIG
+			ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $V2RAY_DNS_REMOTE_LOG run -c "$V2RAY_DNS_REMOTE_CONFIG"
+		}
+		
+		[ -n "$dns_listen_port" ] && _extra_param="${_extra_param} -dns_listen_port ${dns_listen_port}"
+		[ -n "$dns_cache" ] && _extra_param="${_extra_param} -dns_cache ${dns_cache}"
+		_extra_param="${_extra_param} -dns_query_strategy UseIP"
+		_extra_param="${_extra_param} -direct_dns_port ${dns_direct_listen_port} -direct_dns_udp_server 127.0.0.1"
+		if [ "$remote_dns_protocol" == "fakedns" ]; then
 			_extra_param="${_extra_param} -remote_dns_fake 1"
-		;;
-	esac
-	lua $API_GEN_V2RAY -node $node -redir_port $redir_port -tcp_proxy_way $tcp_proxy_way -loglevel $loglevel ${_extra_param} > $config_file
+		else
+			_extra_param="${_extra_param} -remote_dns_port ${dns_remote_listen_port} -remote_dns_udp_server 127.0.0.1"
+		fi
+	}
+	
+	lua $UTIL_XRAY gen_config -node $node -redir_port $redir_port -tcp_proxy_way $tcp_proxy_way -loglevel $loglevel ${_extra_param} > $config_file
 	ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $log_file run -c "$config_file"
 }
 
@@ -398,9 +438,12 @@ run_socks() {
 	else
 		error_msg="某种原因，此 Socks 服务的相关配置已失联，启动中止！"
 	fi
-
-	if ([ "$type" == "v2ray" ] || [ "$type" == "xray" ]) && ([ -n "$(config_n_get $node balancing_node)" ] || [ "$(config_n_get $node default_node)" != "_direct" -a "$(config_n_get $node default_node)" != "_blackhole" ]); then
-		unset error_msg
+	
+	if [ "$type" == "v2ray" ] || [ "$type" == "xray" ]; then
+		local protocol=$(config_n_get $node protocol)
+		if [ "$protocol" == "_balancing" ] || [ "$protocol" == "_shunt" ] || [ "$protocol" == "_iface" ]; then
+			unset error_msg
+		fi
 	fi
 
 	[ -n "${error_msg}" ] && {
@@ -417,11 +460,11 @@ run_socks() {
 			config_file=$(echo $config_file | sed "s/SOCKS/HTTP_SOCKS/g")
 			local _extra_param="-local_http_port $http_port"
 		}
-		lua $API_GEN_V2RAY -flag SOCKS_$flag -node $node -local_socks_port $socks_port ${_extra_param} > $config_file
+		lua $UTIL_XRAY gen_config -flag SOCKS_$flag -node $node -local_socks_port $socks_port ${_extra_param} > $config_file
 		ln_run "$(first_type $(config_t_get global_app ${type}_file) ${type})" ${type} $log_file run -c "$config_file"
 	;;
 	naiveproxy)
-		lua $API_GEN_NAIVE -node $node -run_type socks -local_addr $bind -local_port $socks_port -server_host $server_host -server_port $port > $config_file
+		lua $UTIL_NAIVE gen_config -node $node -run_type socks -local_addr $bind -local_port $socks_port -server_host $server_host -server_port $port > $config_file
 		ln_run "$(first_type naive)" naive $log_file "$config_file"
 	;;
 	brook)
@@ -440,11 +483,11 @@ run_socks() {
 		ln_run "$(first_type $(config_t_get global_app brook_file) brook)" "brook_SOCKS_${flag}" $log_file "$protocol" --socks5 "$bind:$socks_port" -s "${server_host}:${port}${ws_path}" -p "$(config_n_get $node password)"
 	;;
 	ssr)
-		lua $API_GEN_SS -node $node -local_addr "0.0.0.0" -local_port $socks_port -server_host $server_host -server_port $port > $config_file
+		lua $UTIL_SS gen_config -node $node -local_addr "0.0.0.0" -local_port $socks_port -server_host $server_host -server_port $port > $config_file
 		ln_run "$(first_type ssr-local)" "ssr-local" $log_file -c "$config_file" -v -u
 	;;
 	ss)
-		lua $API_GEN_SS -node $node -local_addr "0.0.0.0" -local_port $socks_port -server_host $server_host -server_port $port -mode tcp_and_udp > $config_file
+		lua $UTIL_SS gen_config -node $node -local_addr "0.0.0.0" -local_port $socks_port -server_host $server_host -server_port $port -mode tcp_and_udp > $config_file
 		ln_run "$(first_type ss-local)" "ss-local" $log_file -c "$config_file" -v
 	;;
 	ss-rust)
@@ -453,7 +496,7 @@ run_socks() {
 			config_file=$(echo $config_file | sed "s/SOCKS/HTTP_SOCKS/g")
 			local _extra_param="-local_http_port $http_port"
 		}
-		lua $API_GEN_SS -node $node -local_socks_port $socks_port -server_host $server_host -server_port $port ${_extra_param} > $config_file
+		lua $UTIL_SS gen_config -node $node -local_socks_port $socks_port -server_host $server_host -server_port $port ${_extra_param} > $config_file
 		ln_run "$(first_type sslocal)" "sslocal" $log_file -c "$config_file" -v
 	;;
 	hysteria)
@@ -462,7 +505,7 @@ run_socks() {
 			config_file=$(echo $config_file | sed "s/SOCKS/HTTP_SOCKS/g")
 			local _extra_param="-local_http_port $http_port"
 		}
-		lua $API_GEN_HYSTERIA -node $node -local_socks_port $socks_port -server_host $server_host -server_port $port ${_extra_param} > $config_file
+		lua $UTIL_HYSTERIA gen_config -node $node -local_socks_port $socks_port -server_host $server_host -server_port $port ${_extra_param} > $config_file
 		ln_run "$(first_type $(config_t_get global_app hysteria_file))" "hysteria" $log_file -c "$config_file" client
 	;;
 	esac
@@ -477,7 +520,7 @@ run_socks() {
 			[ -n "$bin" ] && type="xray"
 		fi
 		[ -z "$type" ] && return 1
-		lua $API_GEN_V2RAY_PROTO -local_http_port $http_port -server_proto socks -server_address "127.0.0.1" -server_port $socks_port -server_username $_username -server_password $_password > $http_config_file
+		lua $UTIL_XRAY gen_proto_config -local_http_port $http_port -server_proto socks -server_address "127.0.0.1" -server_port $socks_port -server_username $_username -server_password $_password > $http_config_file
 		ln_run "$bin" ${type} /dev/null run -c "$http_config_file"
 	}
 	unset http_flag
@@ -543,7 +586,8 @@ run_global() {
 		echolog "开启实验性IPv6透明代理(TProxy)，请确认您的节点及类型支持IPv6！"
 		PROXY_IPV6_UDP=1
 	fi
-	V2RAY_ARGS="flag=global node=$NODE redir_port=$REDIR_PORT dns_listen_port=${TUN_DNS_PORT} dns_query_strategy=${DNS_QUERY_STRATEGY} dns_cache=${DNS_CACHE}"
+	V2RAY_ARGS="flag=global node=$NODE redir_port=$REDIR_PORT"
+	V2RAY_ARGS="${V2RAY_ARGS} dns_listen_port=${TUN_DNS_PORT} direct_dns_query_strategy=${DIRECT_DNS_QUERY_STRATEGY} remote_dns_query_strategy=${REMOTE_DNS_QUERY_STRATEGY} dns_cache=${DNS_CACHE}"
 	local msg="${TUN_DNS} （"
 	[ -n "$DIRECT_DNS_PROTOCOL" ] && {
 		V2RAY_ARGS="${V2RAY_ARGS} direct_dns_protocol=${DIRECT_DNS_PROTOCOL}"
@@ -566,6 +610,8 @@ run_global() {
 				msg="${msg} 直连DNS：${DIRECT_DNS_DOH}"
 			;;
 		esac
+		local _direct_dns_client_ip=$(config_t_get global direct_dns_client_ip)
+		[ -n "${_direct_dns_client_ip}" ] && V2RAY_ARGS="${V2RAY_ARGS} direct_dns_client_ip=${_direct_dns_client_ip}"
 	}
 
 	[ -n "$REMOTE_DNS_PROTOCOL" ] && {
@@ -601,6 +647,13 @@ run_global() {
 	V2RAY_LOG=$TMP_PATH/global.log
 	[ "$(config_t_get global close_log 1)" = "1" ] && V2RAY_LOG="/dev/null"
 	V2RAY_ARGS="${V2RAY_ARGS} log_file=${V2RAY_LOG} config_file=${V2RAY_CONFIG}"
+
+	node_socks_port=$(config_t_get global node_socks_port 1070)
+	V2RAY_ARGS="${V2RAY_ARGS} socks_port=${node_socks_port}"
+	echo "127.0.0.1:$node_socks_port" > $TMP_PATH/global_SOCKS_server
+
+	node_http_port=$(config_t_get global node_http_port 0)
+	[ "$node_http_port" != "0" ] && V2RAY_ARGS="${V2RAY_ARGS} http_port=${node_http_port}"
 
 	run_v2ray $V2RAY_ARGS
 	echo "run_v2ray $V2RAY_ARGS" > $TMP_SCRIPT_FUNC_PATH/_global
@@ -728,16 +781,13 @@ kill_all() {
 }
 
 boot() {
-	[ "$ENABLED" == 1 ] && {
-		local delay=$(config_t_get global_delay start_delay 1)
-		if [ "$delay" -gt 0 ]; then
-			echolog "执行启动延时 $delay 秒后再启动!"
-			sleep $delay && start >/dev/null 2>&1 &
-		else
-			start
-		fi
-	}
-	return 0
+	local delay=$(config_t_get global_delay start_delay 1)
+	if [ "$delay" -gt 0 ]; then
+		echolog "执行启动延时 $delay 秒后再启动!"
+		sleep $delay && start >/dev/null 2>&1 &
+	else
+		start
+	fi
 }
 
 start() {
@@ -756,8 +806,14 @@ start() {
 			run_global
 			source $APP_PATH/iptables.sh start
 			source $APP_PATH/helper_dnsmasq.sh logic_restart
+			bridge_nf_ipt=$(sysctl -e -n net.bridge.bridge-nf-call-iptables)
+			echo -n $bridge_nf_ipt > $TMP_PATH/bridge_nf_ipt
 			sysctl -w net.bridge.bridge-nf-call-iptables=0 >/dev/null 2>&1
-			[ "$PROXY_IPV6" == "1" ] && sysctl -w net.bridge.bridge-nf-call-ip6tables=0 >/dev/null 2>&1
+			[ "$PROXY_IPV6" == "1" ] && {
+				bridge_nf_ip6t=$(sysctl -e -n net.bridge.bridge-nf-call-ip6tables)
+				echo -n $bridge_nf_ip6t > $TMP_PATH/bridge_nf_ip6t
+				sysctl -w net.bridge.bridge-nf-call-ip6tables=0 >/dev/null 2>&1
+			}
 		fi
 	}
 	start_crontab
@@ -775,10 +831,11 @@ stop() {
 	stop_crontab
 	source $APP_PATH/helper_dnsmasq.sh del
 	source $APP_PATH/helper_dnsmasq.sh restart no_log=1
+	[ -s "$TMP_PATH/bridge_nf_ipt" ] && sysctl -w net.bridge.bridge-nf-call-iptables=$(cat $TMP_PATH/bridge_nf_ipt) >/dev/null 2>&1
+	[ -s "$TMP_PATH/bridge_nf_ip6t" ] && sysctl -w net.bridge.bridge-nf-call-ip6tables=$(cat $TMP_PATH/bridge_nf_ip6t) >/dev/null 2>&1
 	rm -rf ${TMP_PATH}
 	rm -rf /tmp/lock/${CONFIG}_script.lock
 	echolog "清空并关闭相关程序和缓存完成。"
-	/etc/init.d/sysctl restart
 	exit 0
 }
 
@@ -801,9 +858,10 @@ UDP_PROXY_MODE="global"
 LOCALHOST_PROXY=$(config_t_get global localhost_proxy '1')
 DIRECT_DNS_PROTOCOL=$(config_t_get global direct_dns_protocol tcp)
 DIRECT_DNS=$(config_t_get global direct_dns 119.29.29.29:53 | sed 's/#/:/g' | sed -E 's/\:([^:]+)$/#\1/g')
+DIRECT_DNS_QUERY_STRATEGY=$(config_t_get global direct_dns_query_strategy UseIP)
 REMOTE_DNS_PROTOCOL=$(config_t_get global remote_dns_protocol tcp)
 REMOTE_DNS=$(config_t_get global remote_dns 1.1.1.1:53 | sed 's/#/:/g' | sed -E 's/\:([^:]+)$/#\1/g')
-DNS_QUERY_STRATEGY=$(config_t_get global dns_query_strategy UseIPv4)
+REMOTE_DNS_QUERY_STRATEGY=$(config_t_get global remote_dns_query_strategy UseIPv4)
 DNS_CACHE=$(config_t_get global dns_cache 1)
 
 DEFAULT_DNS=$(uci show dhcp | grep "@dnsmasq" | grep "\.server=" | awk -F '=' '{print $2}' | sed "s/'//g" | tr ' ' '\n' | grep -v "\/" | head -2 | sed ':label;N;s/\n/,/;b label')

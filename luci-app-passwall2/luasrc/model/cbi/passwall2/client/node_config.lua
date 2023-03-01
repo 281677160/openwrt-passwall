@@ -1,4 +1,4 @@
-local api = require "luci.model.cbi.passwall2.api.api"
+local api = require "luci.passwall2.api"
 local appname = api.appname
 local uci = api.uci
 
@@ -109,8 +109,14 @@ protocol:value("trojan", translate("Trojan"))
 protocol:value("wireguard", translate("WireGuard"))
 protocol:value("_balancing", translate("Balancing"))
 protocol:value("_shunt", translate("Shunt"))
+protocol:value("_iface", translate("Custom Interface") .. " (Only Support Xray)")
 protocol:depends("type", "V2ray")
 protocol:depends("type", "Xray")
+
+
+iface = s:option(Value, "iface", translate("Interface"))
+iface.default = "eth1"
+iface:depends("protocol", "_iface")
 
 local nodes_table = {}
 for k, e in ipairs(api.get_valid_nodes()) do
@@ -290,6 +296,9 @@ port:depends({ type = "Xray", protocol = "shadowsocks" })
 port:depends({ type = "Xray", protocol = "trojan" })
 port:depends({ type = "Xray", protocol = "wireguard" })
 
+hysteria_hop = s:option(Value, "hysteria_hop", translate("Additional ports for hysteria hop"))
+hysteria_hop:depends("type", "Hysteria")
+
 username = s:option(Value, "username", translate("Username"))
 username:depends("type", "Naiveproxy")
 username:depends({ type = "V2ray", protocol = "http" })
@@ -437,12 +446,16 @@ timeout:depends("type", "SS")
 timeout:depends("type", "SS-Rust")
 timeout:depends("type", "SSR")
 
-tcp_fast_open = s:option(ListValue, "tcp_fast_open", translate("TCP Fast Open"), translate("Need node support required"))
+tcp_fast_open = s:option(ListValue, "tcp_fast_open", "TCP " .. translate("Fast Open"), translate("Need node support required"))
 tcp_fast_open:value("false")
 tcp_fast_open:value("true")
 tcp_fast_open:depends("type", "SS")
 tcp_fast_open:depends("type", "SS-Rust")
 tcp_fast_open:depends("type", "SSR")
+
+fast_open = s:option(Flag, "fast_open", translate("Fast Open"))
+fast_open.default = "0"
+fast_open:depends("type", "Hysteria")
 
 ss_plugin = s:option(ListValue, "ss_plugin", translate("plugin"))
 ss_plugin:value("none", translate("none"))
@@ -489,27 +502,12 @@ tls:depends({ type = "Xray", protocol = "socks" })
 tls:depends({ type = "Xray", protocol = "trojan" })
 tls:depends({ type = "Xray", protocol = "shadowsocks" })
 
-xtls = s:option(Flag, "xtls", translate("XTLS"))
-xtls.default = 0
-xtls:depends({ type = "Xray", protocol = "vless", tls = true })
-xtls:depends({ type = "Xray", protocol = "trojan", tls = true })
-
 tlsflow = s:option(Value, "tlsflow", translate("flow"))
 tlsflow.default = ""
 tlsflow:value("", translate("Disable"))
 tlsflow:value("xtls-rprx-vision")
 tlsflow:value("xtls-rprx-vision-udp443")
-tlsflow:depends({ type = "Xray", protocol = "vless", tls = true , xtls = false })
-
-flow = s:option(Value, "flow", translate("flow"))
-flow.default = "xtls-rprx-direct"
-flow:value("xtls-rprx-origin")
-flow:value("xtls-rprx-origin-udp443")
-flow:value("xtls-rprx-direct")
-flow:value("xtls-rprx-direct-udp443")
-flow:value("xtls-rprx-splice")
-flow:value("xtls-rprx-splice-udp443")
-flow:depends("xtls", true)
+tlsflow:depends({ type = "Xray", protocol = "vless", tls = true })
 
 alpn = s:option(ListValue, "alpn", translate("alpn"))
 alpn.default = "default"
@@ -529,20 +527,28 @@ tls_allowInsecure.default = "0"
 tls_allowInsecure:depends("tls", true)
 tls_allowInsecure:depends("type", "Hysteria")
 
-xray_fingerprint = s:option(ListValue, "xray_fingerprint", translate("Finger Print"))
-xray_fingerprint:value("disable", translate("Disable"))
+xray_fingerprint = s:option(Value, "xray_fingerprint", translate("Finger Print"))
+xray_fingerprint:value("", translate("Disable"))
 xray_fingerprint:value("chrome")
 xray_fingerprint:value("firefox")
 xray_fingerprint:value("safari")
+xray_fingerprint:value("ios")
+xray_fingerprint:value("android")
+xray_fingerprint:value("edge")
+xray_fingerprint:value("360")
+xray_fingerprint:value("qq")
+xray_fingerprint:value("random")
 xray_fingerprint:value("randomized")
-xray_fingerprint.default = "disable"
-xray_fingerprint:depends({ type = "Xray", tls = true, xtls = false })
-xray_fingerprint:depends({ type = "Xray", tls = true, xtls = true })
+xray_fingerprint.default = ""
+xray_fingerprint:depends({ type = "Xray", tls = true })
 function xray_fingerprint.cfgvalue(self, section)
 	return m:get(section, "fingerprint")
 end
 function xray_fingerprint.write(self, section, value)
 	m:set(section, "fingerprint", value)
+end
+function xray_fingerprint.remove(self, section)
+	m:del(section, "fingerprint")
 end
 
 transport = s:option(ListValue, "transport", translate("Transport"))
@@ -734,13 +740,13 @@ grpc_initial_windows_size:depends({ type = "Xray", transport = "grpc"})
 -- [[ Mux ]]--
 mux = s:option(Flag, "mux", translate("Mux"))
 mux:depends({ type = "V2ray", protocol = "vmess" })
-mux:depends({ type = "V2ray", protocol = "vless", xtls = false })
+mux:depends({ type = "V2ray", protocol = "vless" })
 mux:depends({ type = "V2ray", protocol = "http" })
 mux:depends({ type = "V2ray", protocol = "socks" })
 mux:depends({ type = "V2ray", protocol = "shadowsocks" })
 mux:depends({ type = "V2ray", protocol = "trojan" })
 mux:depends({ type = "Xray", protocol = "vmess" })
-mux:depends({ type = "Xray", protocol = "vless", xtls = false })
+mux:depends({ type = "Xray", protocol = "vless" })
 mux:depends({ type = "Xray", protocol = "http" })
 mux:depends({ type = "Xray", protocol = "socks" })
 mux:depends({ type = "Xray", protocol = "shadowsocks" })
@@ -768,6 +774,15 @@ hysteria_recv_window_conn:depends("type", "Hysteria")
 
 hysteria_recv_window = s:option(Value, "hysteria_recv_window", translate("QUIC connection receive window"))
 hysteria_recv_window:depends("type", "Hysteria")
+
+hysteria_handshake_timeout = s:option(Value, "hysteria_handshake_timeout", translate("Handshake Timeout"))
+hysteria_handshake_timeout:depends("type", "Hysteria")
+
+hysteria_idle_timeout = s:option(Value, "hysteria_idle_timeout", translate("Idle Timeout"))
+hysteria_idle_timeout:depends("type", "Hysteria")
+
+hysteria_hop_interval = s:option(Value, "hysteria_hop_interval", translate("Hop Interval"))
+hysteria_hop_interval:depends("type", "Hysteria")
 
 hysteria_disable_mtu_discovery = s:option(Flag, "hysteria_disable_mtu_discovery", translate("Disable MTU detection"))
 hysteria_disable_mtu_discovery:depends("type", "Hysteria")
