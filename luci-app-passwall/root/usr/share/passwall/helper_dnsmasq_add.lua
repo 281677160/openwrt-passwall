@@ -1,5 +1,5 @@
 require "luci.sys"
-local api = require "luci.model.cbi.passwall.api.api"
+local api = require "luci.passwall.api"
 
 local var = api.get_args(arg)
 local FLAG = var["-FLAG"]
@@ -17,13 +17,12 @@ local NO_LOGIC_LOG = var["-NO_LOGIC_LOG"]
 local NFTFLAG = var["-NFTFLAG"]
 local LOG_FILE = api.LOG_FILE
 local CACHE_PATH = api.CACHE_PATH
-local CACHE_FLAG = "dns_" .. FLAG
+local CACHE_FLAG = "dnsmasq_" .. FLAG
 local CACHE_DNS_PATH = CACHE_PATH .. "/" .. CACHE_FLAG
 local CACHE_TEXT_FILE = CACHE_DNS_PATH .. ".txt"
 
 local uci = api.uci
 local sys = api.sys
-local jsonc = api.jsonc
 local appname = api.appname
 local fs = api.fs
 local datatypes = api.datatypes
@@ -42,20 +41,6 @@ local function log(...)
         f:write(str .. "\n")
         f:close()
     end
-end
-
---从url获取域名
-local function get_domain_from_url(url)
-    if url then
-        if datatypes.hostname(url) then
-            return url
-        end
-        local domain = url:match("//([^/]+)")
-        if domain then
-            return domain
-        end
-    end
-    return ""
 end
 
 local function check_dns(domain, dns)
@@ -166,9 +151,8 @@ end
 local dnsmasq_default_dns
 
 local cache_text = ""
-local subscribe_proxy=uci:get(appname, "@global_subscribe[0]", "subscribe_proxy") or "0"
 local new_rules = luci.sys.exec("echo -n $(find /usr/share/passwall/rules -type f | xargs md5sum)")
-local new_text = TMP_DNSMASQ_PATH .. DNSMASQ_CONF_FILE .. DEFAULT_DNS .. LOCAL_DNS .. TUN_DNS .. REMOTE_FAKEDNS .. CHINADNS_DNS .. PROXY_MODE .. NO_PROXY_IPV6 .. subscribe_proxy .. new_rules .. NFTFLAG
+local new_text = TMP_DNSMASQ_PATH .. DNSMASQ_CONF_FILE .. DEFAULT_DNS .. LOCAL_DNS .. TUN_DNS .. REMOTE_FAKEDNS .. CHINADNS_DNS .. PROXY_MODE .. NO_PROXY_IPV6 .. new_rules .. NFTFLAG
 if fs.access(CACHE_TEXT_FILE) then
     for line in io.lines(CACHE_TEXT_FILE) do
         cache_text = line
@@ -227,33 +211,9 @@ if not fs.access(CACHE_DNS_PATH) then
     end
     log(string.format("  - 域名白名单(whitelist)：%s", LOCAL_DNS or "默认"))
 
-    local fwd_dns = LOCAL_DNS
-    local ipset_flag = setflag_4 .. "whitelist," .. setflag_6 .. "whitelist6"
+    local fwd_dns
+    local ipset_flag
     local no_ipv6
-    if subscribe_proxy == "1" then
-        fwd_dns = TUN_DNS
-        ipset_flag = setflag_4 .. "blacklist," .. setflag_6 .. "blacklist6"
-        if NO_PROXY_IPV6 == "1" then
-            ipset_flag = setflag_4 .. "blacklist"
-            no_ipv6 = true
-        end
-        if not only_global then
-            if REMOTE_FAKEDNS == "1" then
-                ipset_flag = nil
-            end
-        end
-    end
-    uci:foreach(appname, "subscribe_list", function(t)
-        local domain = get_domain_from_url(t.url)
-        if domain then
-            if no_ipv6 then
-                set_domain_address(domain, "::")
-            end
-            set_domain_dns(domain, fwd_dns)
-            set_domain_ipset(domain, ipset_flag)
-        end
-    end)
-    log(string.format("  - 节点订阅域名(blacklist)：%s", fwd_dns or "默认"))
 
     --始终使用远程DNS解析代理（黑名单）列表
     for line in io.lines("/usr/share/passwall/rules/proxy_host") do
@@ -423,23 +383,28 @@ if not fs.access(CACHE_DNS_PATH) then
     f_out:write(new_text)
     f_out:close()
 end
+
 if api.is_install("procd\\-ujail") then
     fs.copyr(CACHE_DNS_PATH, TMP_DNSMASQ_PATH)
 else
     api.remove(TMP_DNSMASQ_PATH)
     fs.symlink(CACHE_DNS_PATH, TMP_DNSMASQ_PATH)
 end
-local conf_out = io.open(DNSMASQ_CONF_FILE, "a")
-conf_out:write(string.format("conf-dir=%s\n", TMP_DNSMASQ_PATH))
-if dnsmasq_default_dns then
-    local f_out = io.open("/tmp/etc/passwall/default_DNS", "a")
-    f_out:write(DEFAULT_DNS)
-    f_out:close()
-    conf_out:write(string.format("server=%s\n", dnsmasq_default_dns))
-    conf_out:write("all-servers\n")
-    conf_out:write("no-poll\n")
-    conf_out:write("no-resolv\n")
-    log(string.format("  - 以上所列以外及默认：%s", dnsmasq_default_dns))
+
+if FLAG == "default" and DNSMASQ_CONF_FILE ~= "nil" then
+    local conf_out = io.open(DNSMASQ_CONF_FILE, "a")
+    conf_out:write(string.format("conf-dir=%s\n", TMP_DNSMASQ_PATH))
+    if dnsmasq_default_dns then
+        local f_out = io.open("/tmp/etc/passwall/default_DNS", "a")
+        f_out:write(DEFAULT_DNS)
+        f_out:close()
+        conf_out:write(string.format("server=%s\n", dnsmasq_default_dns))
+        conf_out:write("all-servers\n")
+        conf_out:write("no-poll\n")
+        conf_out:write("no-resolv\n")
+        log(string.format("  - 以上所列以外及默认：%s", dnsmasq_default_dns))
+    end
+    conf_out:close()
 end
-conf_out:close()
+
 log("  - PassWall必须依赖于Dnsmasq，如果你自行配置了错误的DNS流程，将会导致域名(直连/代理域名)分流失效！！！")
